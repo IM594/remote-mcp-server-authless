@@ -2,6 +2,7 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import OpenAI from "openai";
+import { env } from "cloudflare:workers";
 
 // Define our MCP agent with tools
 export class MyMCP extends McpAgent {
@@ -23,22 +24,9 @@ export class MyMCP extends McpAgent {
       },
       async ({ queries }) => {
         try {
-          // Check if API key is available
-          const apiKey = (globalThis as any).OPENAI_API_KEY;
-          if (!apiKey) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: "Error: OPENAI_API_KEY environment variable is not set",
-                },
-              ],
-            };
-          }
-
           // Initialize OpenAI client
           const openai = new OpenAI({
-            apiKey: apiKey,
+            apiKey: env.OPENAI_API_KEY,
           });
 
           // System prompt for detailed responses
