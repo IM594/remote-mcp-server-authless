@@ -94,18 +94,56 @@ Your primary goal is to generate as much original, factual, and detailed content
 
           // Extract the response content
           const apiResponse = response as any;
+          
+          // Log the full response structure for debugging
+          console.log("OpenAI API Response:", JSON.stringify(apiResponse, null, 2));
+          console.log("Response keys:", Object.keys(apiResponse));
+          
+          // Check if we have output_text field (convenient field)
+          if (apiResponse.output_text) {
+            console.log("Found output_text:", apiResponse.output_text);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: apiResponse.output_text,
+                },
+              ],
+            };
+          } else {
+            console.log("No output_text field found");
+          }
+
+          // Check output array structure
+          console.log("Checking output array:", {
+            hasOutput: !!apiResponse.output,
+            outputLength: apiResponse.output?.length,
+            outputType: typeof apiResponse.output
+          });
+
           if (apiResponse.output && apiResponse.output.length > 0) {
             const output = apiResponse.output[0];
+            console.log("First output item:", JSON.stringify(output, null, 2));
+            console.log("First output keys:", Object.keys(output));
+            
             if (output.content && output.content.length > 0) {
               const content = output.content;
+              console.log("Content array:", JSON.stringify(content, null, 2));
+              console.log("Content length:", content.length);
+              console.log("Content types:", content.map((item: any) => ({ type: item.type, hasText: !!item.text })));
+              
               let responseText = "";
 
               // Handle different content types
               for (const item of content) {
+                console.log("Processing content item:", { type: item.type, hasText: !!item.text });
                 if (item.type === "output_text") {
+                  console.log("Found output_text item:", item.text);
                   responseText += item.text || "";
                 }
               }
+
+              console.log("Final responseText:", { length: responseText.length, preview: responseText.substring(0, 200) });
 
               if (responseText) {
                 return {
@@ -116,10 +154,23 @@ Your primary goal is to generate as much original, factual, and detailed content
                     },
                   ],
                 };
+              } else {
+                console.log("No responseText found after processing content");
               }
+            } else {
+              console.log("No content array or empty content:", {
+                hasContent: !!output.content,
+                contentLength: output.content?.length
+              });
             }
+          } else {
+            console.log("No output array or empty output:", {
+              hasOutput: !!apiResponse.output,
+              outputLength: apiResponse.output?.length
+            });
           }
 
+          console.log("Returning default error message");
           return {
             content: [
               {
