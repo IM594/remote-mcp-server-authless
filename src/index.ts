@@ -1,100 +1,93 @@
-import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import OpenAI from "openai";
 import { env } from "cloudflare:workers";
 
-// Define our MCP agent with tools
-export class MyMCP extends McpAgent {
-  server = new McpServer({
-    name: "File Search Assistant",
-    version: "1.0.0",
-  });
+// Create MCP server instance
+const mcpServer = new McpServer({
+  name: "File Search Assistant",
+  version: "1.0.0",
+});
 
-  async init() {
-    // Vector store search tool
-    this.server.tool(
-      "vector_store_search",
-      {
-        query: z
-          .array(z.string())
-          .describe("Array of query strings to search in the vector store"),
-      },
-      async ({ query }) => {
-        try {
-          // Vector store ID from the example
-          const vectorStoreId = "vs_68ef41d52fe081919cbf5338c6cfa507";
-          const apiKey = env.OPENAI_API_KEY;
+// Vector store search tool
+mcpServer.tool(
+  "vector_store_search",
+  {
+    query: z
+      .array(z.string())
+      .describe("Array of query strings to search in the vector store"),
+  },
+  async ({ query }) => {
+    try {
+      const vectorStoreId = "vs_68ef41d52fe081919cbf5338c6cfa507";
+      const apiKey = env.OPENAI_API_KEY;
 
-          // Prepare the request body
-          const requestBody = {
-            query: query,
-            max_num_results: 10,
-          };
+      const requestBody = {
+        query: query,
+        max_num_results: 10,
+      };
 
-          // Make direct API call to OpenAI vector store search
-          const response = await fetch(
-            `https://api.openai.com/v1/vector_stores/${vectorStoreId}/search`,
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(requestBody),
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error(`Vector store search failed: ${response.status} ${response.statusText}`);
-          }
-
-          const result = await response.json();
-
-          // Return the raw response as stringified JSON
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
-          console.error("Vector store search error:", error);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error searching vector store: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              },
-            ],
-          };
+      const response = await fetch(
+        `https://api.openai.com/v1/vector_stores/${vectorStoreId}/search`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
         }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Vector store search failed: ${response.status} ${response.statusText}`
+        );
       }
-    );
 
-    // OpenAI detailed response tool
-    this.server.tool(
-      "file_search_assistant",
-      {
-        queries: z
-          .array(z.string())
-          .describe(
-            "Array of queries or topics to generate detailed responses for"
-          ),
-      },
-      async ({ queries }) => {
-        try {
-          // Initialize OpenAI client
-          const openai = new OpenAI({
-            apiKey: env.OPENAI_API_KEY,
-          });
+      const result = await response.json();
 
-          // System prompt for maximal fidelity fact extraction
-          const systemPrompt = `**Your sole function is to act as a direct, maximally reliable conduit for providing raw, factual information from source documents to another AI system.** **Your performance is measured by the sheer volume and fidelity of individual, precisely cited facts you extract.** Do not process, summarize, organize, interpret, rephrase, generalize, or merge any information—simply extract and supply the original content in the most direct and faithful way possible.
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error searching vector store: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// OpenAI detailed response tool
+mcpServer.tool(
+  "file_search_assistant",
+  {
+    queries: z
+      .array(z.string())
+      .describe(
+        "Array of queries or topics to generate detailed responses for"
+      ),
+  },
+  async ({ queries }) => {
+    try {
+      const openai = new OpenAI({
+        apiKey: env.OPENAI_API_KEY,
+      });
+
+      const systemPrompt = `**Your sole function is to act as a direct, maximally reliable conduit for providing raw, factual information from source documents to another AI system.** **Your performance is measured by the sheer volume and fidelity of individual, precisely cited facts you extract.** Do not process, summarize, organize, interpret, rephrase, generalize, or merge any information—simply extract and supply the original content in the most direct and faithful way possible.
 
 **Your absolute only task is to deliver *every single* explicit, unaltered factual detail exactly as found in the sourced materials, with each minimal factual unit accompanied by a precise, explicit citation for every detail. Never skip, add, omit, or modify any detail, no matter how minor or tangential it may seem.** Omit only the content that is *not* directly and fully supported by the source.
 
@@ -142,169 +135,209 @@ Example (when copying directly from a source document):
 
 **REMINDER:** Your ONLY role is to deliver **raw, directly sourced, fully traceable, and exhaustively detailed facts**, attached with precise citations, for use by downstream AI systems. **Do not process or organize in any way—simply provide maximal fidelity data exactly as found.**`;
 
-          // Combine all queries into one request
-          const combinedQuery = queries.join("\n\n");
+      const combinedQuery = queries.join("\n\n");
 
-          // Use the responses API as specified
-          const response = await openai.responses.create({
-            model: "gpt-4.1-mini",
-            input: [
+      const response = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: [
+          {
+            role: "system",
+            content: [
               {
-                role: "system",
-                content: [
-                  {
-                    type: "input_text",
-                    text: systemPrompt,
-                  },
-                ],
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "input_text",
-                    text: combinedQuery,
-                  },
-                ],
+                type: "input_text",
+                text: systemPrompt,
               },
             ],
-            text: {
-              format: {
-                type: "text",
-              },
-            },
-            reasoning: {},
-            tools: [
+          },
+          {
+            role: "user",
+            content: [
               {
-                type: "file_search",
-                vector_store_ids: ["vs_68ef41d52fe081919cbf5338c6cfa507"],
+                type: "input_text",
+                text: combinedQuery,
               },
             ],
-            tool_choice: {
-              type: "file_search",
-            },
-            temperature: 0.7,
-            max_output_tokens: 2048,
-            top_p: 1,
-            store: true,
-            include: ["web_search_call.action.sources"],
-          });
+          },
+        ],
+        text: {
+          format: {
+            type: "text",
+          },
+        },
+        reasoning: {},
+        tools: [
+          {
+            type: "file_search",
+            vector_store_ids: ["vs_68ef41d52fe081919cbf5338c6cfa507"],
+          },
+        ],
+        tool_choice: {
+          type: "file_search",
+        },
+        temperature: 0.7,
+        max_output_tokens: 2048,
+        top_p: 1,
+        store: true,
+        include: ["web_search_call.action.sources"],
+      });
 
-          // Extract the response content
-          const apiResponse = response as any;
-          
-          // Log the full response structure for debugging
-          console.log("OpenAI API Response:", JSON.stringify(apiResponse, null, 2));
-          console.log("Response keys:", Object.keys(apiResponse));
-          
-          // Check if we have output_text field (convenient field)
-          if (apiResponse.output_text) {
-            console.log("Found output_text:", apiResponse.output_text);
+      const apiResponse = response as any;
+
+      // Simplified response handling without excessive logging
+      if (apiResponse.output_text) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: apiResponse.output_text,
+            },
+          ],
+        };
+      }
+
+      if (apiResponse.output && apiResponse.output.length > 0) {
+        const output = apiResponse.output[0];
+        if (output.content && output.content.length > 0) {
+          const content = output.content;
+          let responseText = "";
+
+          for (const item of content) {
+            if (item.type === "output_text") {
+              responseText += item.text || "";
+            }
+          }
+
+          if (responseText) {
             return {
               content: [
                 {
                   type: "text",
-                  text: apiResponse.output_text,
+                  text: responseText,
                 },
               ],
             };
-          } else {
-            console.log("No output_text field found");
           }
-
-          // Check output array structure
-          console.log("Checking output array:", {
-            hasOutput: !!apiResponse.output,
-            outputLength: apiResponse.output?.length,
-            outputType: typeof apiResponse.output
-          });
-
-          if (apiResponse.output && apiResponse.output.length > 0) {
-            const output = apiResponse.output[0];
-            console.log("First output item:", JSON.stringify(output, null, 2));
-            console.log("First output keys:", Object.keys(output));
-            
-            if (output.content && output.content.length > 0) {
-              const content = output.content;
-              console.log("Content array:", JSON.stringify(content, null, 2));
-              console.log("Content length:", content.length);
-              console.log("Content types:", content.map((item: any) => ({ type: item.type, hasText: !!item.text })));
-              
-              let responseText = "";
-
-              // Handle different content types
-              for (const item of content) {
-                console.log("Processing content item:", { type: item.type, hasText: !!item.text });
-                if (item.type === "output_text") {
-                  console.log("Found output_text item:", item.text);
-                  responseText += item.text || "";
-                }
-              }
-
-              console.log("Final responseText:", { length: responseText.length, preview: responseText.substring(0, 200) });
-
-              if (responseText) {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: responseText,
-                    },
-                  ],
-                };
-              } else {
-                console.log("No responseText found after processing content");
-              }
-            } else {
-              console.log("No content array or empty content:", {
-                hasContent: !!output.content,
-                contentLength: output.content?.length
-              });
-            }
-          } else {
-            console.log("No output array or empty output:", {
-              hasOutput: !!apiResponse.output,
-              outputLength: apiResponse.output?.length
-            });
-          }
-
-          console.log("Returning default error message");
-          return {
-            content: [
-              {
-                type: "text",
-                text: "No response content received from OpenAI API",
-              },
-            ],
-          };
-        } catch (error) {
-          console.error("OpenAI API error:", error);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error calling OpenAI API: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              },
-            ],
-          };
         }
       }
-    );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No response content received from OpenAI API",
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error calling OpenAI API: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
   }
-}
+);
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-      return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
+    if (url.pathname === "/sse" || url.pathname === "/mcp") {
+      // Handle MCP requests using StreamableHTTPServerTransport
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+
+          // Create a new transport for this request
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined, // Stateless
+            enableJsonResponse: true, // Enable JSON responses for Cloudflare Workers
+          });
+
+          // Connect the MCP server to this transport
+          await mcpServer.connect(transport);
+
+          // Handle the request
+          const response = await transport.handleRequest(
+            request,
+            null as any,
+            body
+          );
+
+          // Close the connection after handling
+          transport.close();
+
+          return new Response(JSON.stringify(response), {
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        } catch (error) {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message:
+                  error instanceof Error ? error.message : "Internal error",
+              },
+              id: null,
+            }),
+            {
+              status: 500,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
+      }
+
+      if (request.method === "GET") {
+        // For GET requests, create transport but don't handle messages
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true,
+        });
+
+        await mcpServer.connect(transport);
+
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "Method not allowed. Use POST for MCP requests.",
+            },
+            id: null,
+          }),
+          {
+            status: 405,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      }
     }
 
-    if (url.pathname === "/mcp") {
-      return MyMCP.serve("/mcp").fetch(request, env, ctx);
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
     }
 
     return new Response("Not found", { status: 404 });
