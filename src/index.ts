@@ -94,26 +94,29 @@ Your primary goal is to generate as much original, factual, and detailed content
 
           // Extract the response content
           const apiResponse = response as any;
-          if (apiResponse.response?.content) {
-            const content = apiResponse.response.content;
-            let responseText = "";
+          if (apiResponse.output && apiResponse.output.length > 0) {
+            const output = apiResponse.output[0];
+            if (output.content && output.content.length > 0) {
+              const content = output.content;
+              let responseText = "";
 
-            // Handle different content types
-            for (const item of content) {
-              if (item.type === "text") {
-                responseText += item.text || "";
+              // Handle different content types
+              for (const item of content) {
+                if (item.type === "output_text") {
+                  responseText += item.text || "";
+                }
               }
-            }
 
-            if (responseText) {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: responseText,
-                  },
-                ],
-              };
+              if (responseText) {
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: responseText,
+                    },
+                  ],
+                };
+              }
             }
           }
 
