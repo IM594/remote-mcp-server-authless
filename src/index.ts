@@ -12,6 +12,70 @@ export class MyMCP extends McpAgent {
   });
 
   async init() {
+    // Vector store search tool
+    this.server.tool(
+      "vector_store_search",
+      {
+        query: z
+          .array(z.string())
+          .describe("Array of query strings to search in the vector store"),
+      },
+      async ({ query }) => {
+        try {
+          // Vector store ID from the example
+          const vectorStoreId = "vs_68ef41d52fe081919cbf5338c6cfa507";
+          const apiKey = env.OPENAI_API_KEY;
+
+          // Prepare the request body
+          const requestBody = {
+            query: query,
+            max_num_results: 10,
+          };
+
+          // Make direct API call to OpenAI vector store search
+          const response = await fetch(
+            `https://api.openai.com/v1/vector_stores/${vectorStoreId}/search`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(requestBody),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`Vector store search failed: ${response.status} ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          // Return the raw response as stringified JSON
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          console.error("Vector store search error:", error);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error searching vector store: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              },
+            ],
+          };
+        }
+      }
+    );
+
     // OpenAI detailed response tool
     this.server.tool(
       "file_search_assistant",
