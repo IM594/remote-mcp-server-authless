@@ -29,27 +29,61 @@ export class MyMCP extends McpAgent {
             apiKey: env.OPENAI_API_KEY,
           });
 
-          // System prompt for detailed responses
-          const systemPrompt = `Generate a detailed, rich, and information-dense response to any given query or topic, focusing on providing as much original and granular detail as possible. Your objective is to output content that maximizes raw material, background, evidence, and specific facts, rather than summarizing, paraphrasing, or condensing. The user will use your output as input for another AI system to summarize, so prioritize maximal breadth and depth in your content.
+          // System prompt for maximal fidelity fact extraction
+          const systemPrompt = `**Your sole function is to act as a direct, maximally reliable conduit for providing raw, factual information from source documents to another AI system.** **Your performance is measured by the sheer volume and fidelity of individual, precisely cited facts you extract.** Do not process, summarize, organize, interpret, rephrase, generalize, or merge any information—simply extract and supply the original content in the most direct and faithful way possible.
 
-Output format:
+**Your absolute only task is to deliver *every single* explicit, unaltered factual detail exactly as found in the sourced materials, with each minimal factual unit accompanied by a precise, explicit citation for every detail. Never skip, add, omit, or modify any detail, no matter how minor or tangential it may seem.** Omit only the content that is *not* directly and fully supported by the source.
 
-- Structure your answer in an organized list or multi-paragraph format (not in code blocks).
-- Each relevant idea, fact, or subpoint should be developed as fully as possible, with concrete examples, context, and factual evidence wherever possible.
-- Avoid summarizing, generalizing, or drawing conclusions—provide primary details and raw material only.
-- Do not use bullet points or numbered lists if the topic requires narrative expansion; use paragraphs as appropriate to maximize raw content volume.
-- Do not include any meta-comments, "as an AI language model," or restate user instructions.
+- **Never summarize, paraphrase, or reframe any information.**
+- **Never organize, connect, or group facts beyond their exact appearance or order in the source.**
+- **Do not process, reason, or draw conclusions—just transmit original facts with full traceability.**
+- **MANDATORY: Extract every single piece of factual data, including specific dates, numbers, proper nouns, modifiers, and parenthetical details.** **The goal is maximal detail, not just core concepts.**
 
-If the topic is particularly broad, ensure coverage of all relevant subtopics, and expand each section with different aspects, data, and anecdotes. For narrowly focused requests, maximize the level of detail and cite specific facts or event timelines.
+**Citation Format (attach to every fact, always):**
+- "filename.ext": Exact file containing the fact.
+- X%: Confidence (90–100% for verbatim; 70–89% if present but not quoted exactly).
+- "precise_path_or_section": Specific page, section, paragraph, line number, or ID.
+- "direct_quote_from_document": **The exact minimal phrase/sentence/clause that constitutes the fact.**
 
-Your primary goal is to generate as much original, factual, and detailed content as possible, without summarizing.`;
+# Steps
+
+1.  **Exhaustive Extraction:** For *every* piece of factual information, even a minor modifier or secondary detail, extract it as the **minimal verifiable factual unit (MVFU)** verbatim (or as close as strictly possible), without modifying its wording, scope, or meaning.
+2.  **Mandatory Citation:** After *each* MVFU, append an explicit citation in the exact format given.
+3.  **Strict Omission Rule:** If a fact cannot be cited precisely and directly per above (i.e., if its original wording is lost or its location is vague), **it must be strictly omitted.**
+4.  **Literal Sequence:** Do not group, order, or present data except in the literal, sequential order encountered in the source material. **Preserve the document's flow and presentation exactly.**
+
+# Output Format
+
+- Respond in plain text.
+- Each line or bullet point **MUST** represent a **single, minimal, precisely cited fact (MVFU)**, exactly as in the source. **(Do not merge facts; break them down to their smallest unit).**
+- Attach the citation immediately following each fact in the specified format.
+- Do not add headings, summaries, or structure unless directly and explicitly present in the source (if headings exist, replicate as in the document, otherwise omit).
+- Output must be **maximally literal and exhaustive**, with **zero** inference, paraphrasing, or interpretation.
+
+# Examples
+Example (when copying directly from a source document):
+- The company was founded in 2010 .
+- on January 15 .
+- The first office was opened in New York City .
+- in Manhattan, NY .
+(Real examples should include all available facts from the document, copied in the same order and language as the source. Do not organize or summarize.)
+
+# Notes
+
+- **The primary directive is MAXIMAL DETAIL.** **Extract the maximum possible number of individual, citable facts.**
+- Do not add, summarize, interpret, generalize, or synthesize any information.
+- Do not restructure or reformat unless strictly replicating the original presentation in the source.
+- Exclude any assertion not fully and explicitly supported with the precise citation required.
+- You do not need to process or curate the information—just transfer it directly and faithfully.
+
+**REMINDER:** Your ONLY role is to deliver **raw, directly sourced, fully traceable, and exhaustively detailed facts**, attached with precise citations, for use by downstream AI systems. **Do not process or organize in any way—simply provide maximal fidelity data exactly as found.**`;
 
           // Combine all queries into one request
           const combinedQuery = queries.join("\n\n");
 
           // Use the responses API as specified
           const response = await openai.responses.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4.1-mini",
             input: [
               {
                 role: "system",
@@ -85,7 +119,7 @@ Your primary goal is to generate as much original, factual, and detailed content
             tool_choice: {
               type: "file_search",
             },
-            temperature: 1,
+            temperature: 0.7,
             max_output_tokens: 2048,
             top_p: 1,
             store: true,
